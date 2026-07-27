@@ -1,0 +1,51 @@
+# Configuración del orquestador personal.
+# Editá esto, no el código.
+
+[identidad]
+# Solo para el saludo y para elegir a quién se manda el iMessage.
+apple_id = "facundorubino21@gmail.com"
+
+[calendario]
+# Calendarios que NO querés ver en el brief (cumpleaños, feriados de terceros…).
+ignorar = ["Birthdays", "Cumpleaños", "Siri Suggestions", "Holidays"]
+
+# Calendarios de perímetro CORPORATIVO (D29).
+# De estos se leen SOLO título, horario y duración. Nunca notas, invitados,
+# ubicación, adjuntos ni URL — el lector los descarta antes de componer.
+corporativos = ["Trabajo", "Universidad", "Work"]
+
+# Ventana del día que considerás "tu día" para calcular huecos libres.
+hora_inicio = 8
+hora_fin = 21
+
+[recordatorios]
+# Listas de Recordatorios a mirar. Vacío = todas.
+listas = []
+# Cuántos días hacia atrás se muestran los vencidos.
+vencidos_dias = 14
+
+[direccion]
+# El experto en dirección de iniciativas (pm-assistant).
+# El orquestador le PREGUNTA; el experto nunca empuja. ROUTER.md §6.
+# Dejalo vacío ("") para saltear la consulta.
+state_dir = "~/projects/direction-state"
+# El estado CORPORATIVO queda deliberadamente fuera (D29): se dirige desde la
+# cuenta Team y el orquestador no lo alcanza. No agregues su ruta acá.
+
+[entrega]
+# Orden de entrega. Se ejecutan todas las que estén en la lista.
+#   archivo_icloud   — escribe el brief en iCloud Drive (lo ves en Archivos del iPhone)
+#   imessage         — te lo manda por iMessage a vos mismo → llega como notificación al teléfono
+#   notificacion_mac — notificación local en el Mac (solo el resumen)
+#   ntfy             — push vía ntfy.sh (TERCERO: leé perimetro_en_push antes de activarlo)
+canales = ["archivo_icloud", "imessage"]
+
+ruta_icloud = "~/Library/Mobile Documents/com~apple~CloudDocs/Brief"
+
+# Solo si usás ntfy: el topic es tu única credencial, elegí algo impredecible.
+ntfy_topic = ""
+
+# ¿Pueden salir títulos de calendarios corporativos hacia un canal de TERCEROS
+# (hoy: ntfy)? Default false = se redactan a "Reunión (Trabajo) 10:00–11:00".
+# D29 permite esos títulos EN EL BRIEF; que salgan de Apple es otra cosa (P7).
+perimetro_en_push = false

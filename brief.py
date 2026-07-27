@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+"""Brief diario — orquestador personal.
+
+    python brief.py                 # arma el brief y lo entrega
+    python brief.py --dry-run       # lo imprime, no entrega nada
+    python brief.py --hoy 2026-08-03
+
+Cuatro pasos, en este orden y sin mezclarse:
+
+  1. LEER      fuentes de tiempo (Calendario y Recordatorios vía EventKit)
+  2. PREGUNTAR al experto en dirección (pm-assistant) qué detectó
+  3. COMPONER  el texto — determinístico, sin modelo, sin costo
+  4. ENTREGAR  por los canales configurados
+
+Reglas que este archivo hace cumplir (ROUTER.md):
+  · El experto DETECTA; el orquestador AVISA. Acá se le pregunta, nunca se le ordena.
+  · De calendarios corporativos se leen SOLO título, horario y duración (D29).
+  · El orquestador no decide nada ni escribe en ninguna fuente. Solo lee y cuenta.
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import threading
+import tomllib
+from dataclasses import dataclass, field
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+AQUI = Path(__file__).resolve().parent
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+# ─────────────────────────────────────────────────────────── modelo interno ──
+
+@dataclass
+class Evento:
+    titulo: str
+    inicio: datetime | None      # None si es de día completo
+    fin: datetime | None
+    todo_el_dia: bool
+    calendario: str
+    corporativo: bool
+
+    def franja(self) -> str:
+        if self.todo_el_dia or not self.inicio or not self.fin:
+            return "todo el día"
+        return f"{self.inicio:%H:%M}–{self.fin:%H:%M}"
+
+    def duracion_min(self) -> int:
+        if self.todo_el_dia or not self.inicio or not self.fin:
+            return 0
+        return int((self.fin - self.inicio).total_seconds() // 60)
+
+
+@dataclass
+class Recordatorio:
+    titulo: str
+    vence: date | None
+    lista: str
+    corporativo: bool = False
+
+    def dias_vencido(self, hoy: date) -> int:
+        return (hoy - self.vence).days if self.vence and self.vence < hoy else 0
+
+
+@dataclass
+class Deteccion:
+    iniciativa: str
+    tipo: str
+    detalle: str
+
+
+@dataclass
+class Brief:
+    hoy: date
+    eventos: list[Evento] = field(default_factory=list)
+    recordatorios: list[Recordatorio] = field(default_factory=list)
+    detecciones: list[Deteccion] = field(default_factory=list)
+    avisos: list[str] = field(default_factory=list)   # fallos honestos, no se ocultan
+
+
+# ───────────────────────────────────────────── 1. LEER — Apple vía EventKit ──
+
+def _esperar(fn, timeout=20.0):
+    """EventKit responde por callback; acá lo volvemos síncrono."""
+    hecho = threading.Event()
+    caja = {}
+
+    def cb(*args):
+        caja["args"] = args
+        hecho.set()
+
+    fn(cb)
+    if not hecho.wait(timeout):
+        raise TimeoutError("EventKit no respondió a tiempo")
+    return caja.get("args", ())
+
+
+def _store_con_permiso(tipo_entidad, kind: str):
+    """Devuelve un EKEventStore con acceso concedido, o levanta.
+
+    macOS 14+ usa requestFullAccessTo…; versiones previas, requestAccessToEntityType_.
+    """
+    from EventKit import EKEventStore
+
+    store = EKEventStore.alloc().init()
+    if kind == "eventos" and hasattr(store, "requestFullAccessToEventsWithCompletion_"):
+        args = _esperar(store.requestFullAccessToEventsWithCompletion_)
+    elif kind == "recordatorios" and hasattr(store, "requestFullAccessToRemindersWithCompletion_"):
+        args = _esperar(store.requestFullAccessToRemindersWithCompletion_)
+    else:
+        args = _esperar(lambda cb: store.requestAccessToEntityType_completion_(tipo_entidad, cb))
+
+    concedido = bool(args[0]) if args else False
+    if not concedido:
+        raise PermissionError(
+            f"macOS no dio acceso a {kind}. Ajustá Configuración del Sistema → "
+            f"Privacidad y seguridad → {'Calendarios' if kind == 'eventos' else 'Recordatorios'} "
+            f"y habilitá la app desde la que corrés esto (Terminal, o launchd)."
+        )
+    return store
+
+
+def _nsdate(dt: datetime):
+    from Foundation import NSDate
+    return NSDate.dateWithTimeIntervalSince1970_(dt.timestamp())
+
+
+def _dt(nsdate) -> datetime | None:
+    if nsdate is None:
+        return None
+    return datetime.fromtimestamp(nsdate.timeIntervalSince1970())
+
+
+def leer_calendario(cfg: dict, hoy: date) -> tuple[list[Evento], list[str]]:
+    """Eventos de hoy.
+
+    PERÍMETRO (D29): de cada evento se toman título, horario, duración y nombre
+    del calendario. Nada más. Notas, ubicación, invitados, adjuntos y URL no se
+    leen — no es que se filtren después: no entran nunca a este proceso.
+    """
+    from EventKit import EKEntityTypeEvent
+
+    store = _store_con_permiso(EKEntityTypeEvent, "eventos")
+    inicio = datetime.combine(hoy, time.min)
+    fin = datetime.combine(hoy, time.max)
+
+    pred = store.predicateForEventsWithStartDate_endDate_calendars_(
+        _nsdate(inicio), _nsdate(fin), None)
+
+    ignorar = {c.lower() for c in cfg["calendario"].get("ignorar", [])}
+    corp = {c.lower() for c in cfg["calendario"].get("corporativos", [])}
+
+    out: list[Evento] = []
+    for ev in store.eventsMatchingPredicate_(pred) or []:
+        cal = ev.calendar().title() if ev.calendar() else ""
+        if cal.lower() in ignorar:
+            continue
+        out.append(Evento(
+            titulo=(ev.title() or "(sin título)"),
+            inicio=_dt(ev.startDate()),
+            fin=_dt(ev.endDate()),
+            todo_el_dia=bool(ev.isAllDay()),
+            calendario=cal,
+            corporativo=cal.lower() in corp,
+        ))
+    out.sort(key=lambda e: (not e.todo_el_dia, e.inicio or datetime.min))
+    return out, []
+
+
+def leer_recordatorios(cfg: dict, hoy: date) -> tuple[list[Recordatorio], list[str]]:
+    """Recordatorios incompletos que vencen hoy o antes."""
+    from EventKit import EKEntityTypeReminder
+
+    store = _store_con_permiso(EKEntityTypeReminder, "recordatorios")
+    desde = datetime.combine(hoy - timedelta(days=cfg["recordatorios"]["vencidos_dias"]), time.min)
+    hasta = datetime.combine(hoy, time.max)
+
+    solo = {l.lower() for l in cfg["recordatorios"].get("listas", [])}
+    corp = {c.lower() for c in cfg["calendario"].get("corporativos", [])}
+    cals = None
+    if solo:
+        cals = [c for c in store.calendarsForEntityType_(EKEntityTypeReminder) or []
+                if c.title().lower() in solo] or None
+
+    pred = store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_(
+        _nsdate(desde), _nsdate(hasta), cals)
+    args = _esperar(lambda cb: store.fetchRemindersMatchingPredicate_completion_(pred, cb))
+    crudos = args[0] if args else []
+
+    out: list[Recordatorio] = []
+    for r in crudos or []:
+        comp = r.dueDateComponents()
+        vence = None
+        if comp:
+            try:
+                vence = date(comp.year(), comp.month(), comp.day())
+            except Exception:
+                vence = None
+        lista = r.calendar().title() if r.calendar() else ""
+        out.append(Recordatorio(
+            titulo=(r.title() or "(sin título)"),
+            vence=vence,
+            lista=lista,
+            corporativo=lista.lower() in corp,
+        ))
+    out.sort(key=lambda r: (r.vence or date.max))
+    return out, []
+
+
+# ──────────────────────────── 2. PREGUNTAR al experto en dirección ──────────
+
+def preguntar_direccion(cfg: dict, hoy: date) -> tuple[list[Deteccion], list[str]]:
+    """Le pregunta a pm-assistant qué detectó. Read-only, determinístico, sin modelo.
+
+    Es el patrón de ROUTER.md §6 en su primer uso real: el experto responde
+    cuando le preguntan y nunca empuja. Si no está instalado, el brief sigue
+    andando sin esta sección — degradación, no fallo.
+    """
+    ruta = (cfg.get("direccion", {}).get("state_dir") or "").strip()
+    if not ruta:
+        return [], []
+
+    state_dir = Path(ruta).expanduser()
+    if not state_dir.is_dir():
+        return [], [f"estado de dirección no encontrado en {state_dir}"]
+
+    try:
+        from pm_assistant import session
+    except ImportError:
+        return [], ["pm_assistant no está instalado en este entorno; "
+                    "el brief va sin la sección de dirección"]
+
+    inis, errores = session.load_all(state_dir)
+    avisos = [f"iniciativa inválida: {Path(f).name}" for f in errores]
+
+    out: list[Deteccion] = []
+    for ini in inis:
+        nombre = ini.get("titulo") or ini.get("id", "?")
+        _flags, dets = session.flags_for(ini, hoy)
+        for d in dets:
+            out.append(Deteccion(iniciativa=nombre, tipo=d.tipo, detalle=d.detalle))
+    return out, avisos
+
+
+# ──────────────────────────────────────────────── 3. COMPONER — sin modelo ──
+
+def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date) -> list[tuple[datetime, datetime]]:
+    """Bloques libres dentro de tu día.
+
+    Determinístico a propósito. A futuro esto es lo que se le entrega al experto
+    en dirección como CAPACIDAD DECLARADA (Q-S3 de la Spec 002) — por eso vive
+    acá y no allá: el experto planifica sobre la capacidad, no la calcula.
+    """
+    dia_ini = datetime.combine(hoy, time(cfg["calendario"]["hora_inicio"]))
+    dia_fin = datetime.combine(hoy, time(cfg["calendario"]["hora_fin"]))
+
+    ocupado = sorted(
+        (max(e.inicio, dia_ini), min(e.fin, dia_fin))
+        for e in eventos
+        if not e.todo_el_dia and e.inicio and e.fin and e.fin > dia_ini and e.inicio < dia_fin
+    )
+
+    fusionado: list[list[datetime]] = []
+    for ini, fin in ocupado:
+        if fusionado and ini <= fusionado[-1][1]:
+            fusionado[-1][1] = max(fusionado[-1][1], fin)
+        else:
+            fusionado.append([ini, fin])
+
+    libres, cursor = [], dia_ini
+    for ini, fin in fusionado:
+        if ini - cursor >= timedelta(minutes=45):
+            libres.append((cursor, ini))
+        cursor = max(cursor, fin)
+    if dia_fin - cursor >= timedelta(minutes=45):
+        libres.append((cursor, dia_fin))
+    return libres
+
+
+def _hhmm(minutos: int) -> str:
+    h, m = divmod(minutos, 60)
+    if h and m:
+        return f"{h} h {m:02d}"
+    return f"{h} h" if h else f"{m} min"
+
+
+def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
+    """Arma el texto. `para_terceros` redacta títulos corporativos (D29 + P7)."""
+    d = b.hoy
+    L = [f"{DIAS[d.weekday()].capitalize()} {d.day} de {MESES[d.month - 1]}", ""]
+
+    redactar = para_terceros and not cfg["entrega"].get("perimetro_en_push", False)
+
+    def titulo_de(e: Evento) -> str:
+        return f"Reunión ({e.calendario})" if (redactar and e.corporativo) else e.titulo
+
+    def titulo_rec(r: Recordatorio) -> str:
+        return f"(pendiente de {r.lista})" if (redactar and r.corporativo) else r.titulo
+
+    if b.eventos:
+        L.append("AGENDA")
+        for e in b.eventos:
+            marca = " ·" if e.corporativo else "  "
+            L.append(f" {e.franja():>12}{marca} {titulo_de(e)}")
+        comprometido = sum(e.duracion_min() for e in b.eventos)
+        if comprometido:
+            L.append(f"{'':>14}  ({_hhmm(comprometido)} comprometidas)")
+    else:
+        L.append("AGENDA — el día está vacío.")
+    L.append("")
+
+    libres = huecos_libres(b.eventos, cfg, b.hoy)
+    if libres:
+        trozos = [f"{i:%H:%M}–{f:%H:%M}" for i, f in libres]
+        total = sum(int((f - i).total_seconds() // 60) for i, f in libres)
+        L += [f"LIBRE — {_hhmm(total)} en {len(libres)} bloque(s): " + ", ".join(trozos), ""]
+
+    vencidos = [r for r in b.recordatorios if r.dias_vencido(b.hoy) > 0]
+    hoy_vence = [r for r in b.recordatorios if r.vence == b.hoy]
+    if vencidos or hoy_vence:
+        L.append("RECORDATORIOS")
+        for r in hoy_vence:
+            L.append(f" {'hoy':>12}   {titulo_rec(r)}")
+        for r in sorted(vencidos, key=lambda r: -r.dias_vencido(b.hoy)):
+            L.append(f" {str(r.dias_vencido(b.hoy)) + 'd tarde':>12}   {titulo_rec(r)}")
+        L.append("")
+
+    if b.detecciones:
+        L.append("NECESITA DECISIÓN  (lo detectó el experto en dirección)")
+        for det in b.detecciones:
+            L.append(f"   {det.iniciativa}: {det.detalle}")
+        L.append("")
+
+    if b.avisos:
+        L.append("EL BRIEF NO PUDO VER TODO")
+        for a in b.avisos:
+            L.append(f"   · {a}")
+        L.append("")
+
+    return "\n".join(L).rstrip() + "\n"
+
+
+def resumen(b: Brief) -> str:
+    """Una línea para la notificación."""
+    partes = []
+    if b.eventos:
+        partes.append(f"{len(b.eventos)} evento(s)")
+    pend = len([r for r in b.recordatorios if r.vence and r.vence <= b.hoy])
+    if pend:
+        partes.append(f"{pend} recordatorio(s)")
+    if b.detecciones:
+        partes.append(f"{len(b.detecciones)} para decidir")
+    return " · ".join(partes) if partes else "Día despejado"
+
+
+# ─────────────────────────────────────────────────────────── 4. ENTREGAR ────
+
+def _osascript(script: str) -> None:
+    subprocess.run(["osascript", "-e", script], check=True,
+                   capture_output=True, timeout=30)
+
+
+def entregar(b: Brief, cfg: dict, texto: str) -> list[str]:
+    fallos = []
+    for canal in cfg["entrega"]["canales"]:
+        try:
+            if canal == "archivo_icloud":
+                dest = Path(cfg["entrega"]["ruta_icloud"]).expanduser()
+                dest.mkdir(parents=True, exist_ok=True)
+                (dest / f"{b.hoy:%Y-%m-%d}.md").write_text(texto, encoding="utf-8")
+                (dest / "hoy.md").write_text(texto, encoding="utf-8")
+
+            elif canal == "imessage":
+                destino = cfg["identidad"]["apple_id"]
+                cuerpo = texto.replace("\\", "\\\\").replace('"', '\\"')
+                _osascript(
+                    'tell application "Messages" to send "%s" to '
+                    'buddy "%s" of (1st service whose service type = iMessage)'
+                    % (cuerpo, destino))
+
+            elif canal == "notificacion_mac":
+                _osascript('display notification "%s" with title "Brief de hoy"'
+                           % resumen(b).replace('"', "'"))
+
+            elif canal == "ntfy":
+                topic = cfg["entrega"].get("ntfy_topic", "").strip()
+                if not topic:
+                    fallos.append("ntfy activado sin topic configurado")
+                    continue
+                # Canal de TERCEROS: se recompone con redacción de perímetro.
+                cuerpo = componer(b, cfg, para_terceros=True)
+                subprocess.run(
+                    ["curl", "-fsS", "-d", cuerpo, f"https://ntfy.sh/{topic}"],
+                    check=True, capture_output=True, timeout=30)
+            else:
+                fallos.append(f"canal desconocido: {canal}")
+        except Exception as exc:
+            fallos.append(f"{canal}: {exc}")
+    return fallos
+
+
+# ──────────────────────────────────────────────────────────────── main ──────
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="brief")
+    ap.add_argument("--config", type=Path, default=AQUI / "config.toml")
+    ap.add_argument("--hoy", default=None, help="YYYY-MM-DD (default: hoy)")
+    ap.add_argument("--dry-run", action="store_true", help="imprime, no entrega")
+    args = ap.parse_args(argv)
+
+    cfg = tomllib.loads(args.config.read_text(encoding="utf-8"))
+    hoy = date.fromisoformat(args.hoy) if args.hoy else date.today()
+    b = Brief(hoy=hoy)
+
+    for nombre, fn in (("calendario", leer_calendario), ("recordatorios", leer_recordatorios)):
+        try:
+            datos, avisos = fn(cfg, hoy)
+            setattr(b, "eventos" if nombre == "calendario" else "recordatorios", datos)
+            b.avisos += avisos
+        except Exception as exc:
+            # Una fuente caída degrada el brief; no lo cancela. Y se dice.
+            b.avisos.append(f"{nombre}: {exc}")
+
+    dets, avisos = preguntar_direccion(cfg, hoy)
+    b.detecciones, b.avisos = dets, b.avisos + avisos
+
+    texto = componer(b, cfg)
+
+    if args.dry_run:
+        print(texto)
+        return 0
+
+    fallos = entregar(b, cfg, texto)
+    for f in fallos:
+        print(f"[entrega] {f}", file=sys.stderr)
+    return 1 if fallos else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
