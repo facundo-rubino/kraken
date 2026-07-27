@@ -83,6 +83,10 @@ hasta = "12:45"          # partido en dos para que el almuerzo sea hueco real
 Para lo estacional —dar clase solo de marzo a junio— agregá `desde_fecha` y
 `hasta_fecha`. Fuera de esa ventana el bloque no aplica y los huecos vuelven solos.
 
+Un evento de **día completo** cuyo título contenga `feriado`, `licencia`, `vacaciones`
+(configurable en `anula_fijos`) cancela los fijos de ese día: un feriado no te saca del
+calendario, te saca de la oficina.
+
 Esto es la **capacidad declarada** que el experto en dirección va a recibir cuando
 exista la Spec 002: kraken la calcula, el planificador planifica sobre ella.
 
@@ -150,14 +154,19 @@ Se cambia con `perimetro_en_push = true`, a sabiendas.
 
 Default: `["archivo_icloud", "imessage"]` — todo dentro de Apple.
 
-## Probar sin macOS
+## Pruebas
 
 ```bash
-python prueba_sin_mac.py --state-dir ~/projects/direction-state
+.venv/bin/python pruebas.py          # 28 pruebas, sin dependencias
+.venv/bin/python pruebas.py --ver    # además imprime los briefs
 ```
 
-Ejercita composición, cálculo de huecos, redacción de perímetro y la consulta al
-experto con datos de ejemplo. **No toca EventKit**, así que corre en cualquier lado.
+Cubren el cálculo de huecos, los compromisos fijos y su ventana estacional, el
+feriado que anula la oficina, la redacción de perímetro corporativo y el matching
+de ingredientes. **No tocan EventKit**, así que corren en cualquier lado — lo de
+macOS solo se puede probar en la Mac.
+
+Correlas después de tocar `brief.py` o `compras.py`.
 
 ## Estado de verificación
 

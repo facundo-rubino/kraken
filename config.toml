@@ -18,6 +18,11 @@ corporativos = ["Trabajo", "Universidad", "Work"]
 hora_inicio = 8
 hora_fin = 22
 
+# Un evento de DÍA COMPLETO cuyo título contenga alguna de estas palabras
+# cancela los compromisos fijos de ese día. Un feriado no te saca del
+# calendario: te saca de la oficina.
+anula_fijos = ["feriado", "licencia", "vacaciones", "franco", "asueto", "paro"]
+
 # ── Compromisos fijos ───────────────────────────────────────────────────────
 # Lo que estructura tu semana y NO vive como eventos en el calendario: el
 # trabajo de oficina, las clases. Sin esto el brief diría "13 h libres" todos

@@ -53,10 +53,14 @@ class Evento:
     calendario: str
     corporativo: bool
 
-    def franja(self) -> str:
+    def franja(self, hoy: date | None = None) -> str:
         if self.todo_el_dia or not self.inicio or not self.fin:
             return "todo el día"
-        return f"{self.inicio:%H:%M}–{self.fin:%H:%M}"
+        # Un evento que empieza ayer o termina mañana no puede mostrarse como
+        # "22:00–09:00": eso se lee como un disparate. Se marca el cruce.
+        ini = f"{self.inicio:%H:%M}" if not hoy or self.inicio.date() == hoy else "←"
+        fin = f"{self.fin:%H:%M}" if not hoy or self.fin.date() == hoy else "→"
+        return f"{ini}–{fin}"
 
     def duracion_min(self) -> int:
         if self.todo_el_dia or not self.inicio or not self.fin:
@@ -100,6 +104,7 @@ class Brief:
     recordatorios: list[Recordatorio] = field(default_factory=list)
     detecciones: list[Deteccion] = field(default_factory=list)
     fijos: list[Bloque] = field(default_factory=list)  # trabajo, clases…
+    anula_fijos: str | None = None                     # feriado que los cancela
     comidas: list[str] = field(default_factory=list)   # recetas de hoy
     falta_comprar: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)   # fallos honestos, no se ocultan
@@ -301,6 +306,26 @@ def _hora(txt: str) -> time:
     return time(int(h), int(m))
 
 
+def anulan_fijos(cfg: dict, eventos: list[Evento]) -> str | None:
+    """¿Hay un evento de día completo que cancela los compromisos fijos?
+
+    Un feriado o un día de licencia no te saca del calendario: te saca de la
+    oficina. Sin esto el brief informa 6 h libres un día que tenés 14 — y se
+    equivoca justo en los días que más querés usar.
+    """
+    patrones = [p.lower() for p in cfg.get("calendario", {}).get("anula_fijos", [])]
+    if not patrones:
+        return None
+    for e in eventos:
+        if not e.todo_el_dia:
+            continue
+        titulo = e.titulo.lower()
+        for p in patrones:
+            if p in titulo:
+                return e.titulo
+    return None
+
+
 def bloques_fijos(cfg: dict, hoy: date) -> list[Bloque]:
     """Compromisos recurrentes declarados a mano, que NO viven en el calendario.
 
@@ -395,7 +420,7 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
         L.append("AGENDA")
         for e in b.eventos:
             marca = " ·" if e.corporativo else "  "
-            L.append(f" {e.franja():>12}{marca} {titulo_de(e)}")
+            L.append(f" {e.franja(b.hoy):>12}{marca} {titulo_de(e)}")
         comprometido = sum(e.duracion_min() for e in b.eventos)
         if comprometido:
             L.append(f"{'':>14}  ({_hhmm(comprometido)} comprometidas)")
@@ -403,6 +428,9 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
         L.append("AGENDA — el día está vacío.")
     if b.eventos or not b.fijos:
         L.append("")
+
+    if b.anula_fijos:
+        L += [f"SIN OFICINA — {b.anula_fijos}", ""]
 
     if b.fijos:
         porNombre: dict[str, list[str]] = {}
@@ -537,7 +565,10 @@ def main(argv=None) -> int:
             b.avisos.append(f"{nombre}: {exc}")
 
     try:
-        b.fijos = bloques_fijos(cfg, hoy)
+        motivo = anulan_fijos(cfg, b.eventos)
+        b.fijos = [] if motivo else bloques_fijos(cfg, hoy)
+        if motivo:
+            b.anula_fijos = motivo
     except Exception as exc:
         b.avisos.append(f"compromisos fijos mal configurados: {exc}")
 
