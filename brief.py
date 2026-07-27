@@ -80,6 +80,8 @@ class Brief:
     eventos: list[Evento] = field(default_factory=list)
     recordatorios: list[Recordatorio] = field(default_factory=list)
     detecciones: list[Deteccion] = field(default_factory=list)
+    comidas: list[str] = field(default_factory=list)   # recetas de hoy
+    falta_comprar: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)   # fallos honestos, no se ocultan
 
 
@@ -247,6 +249,28 @@ def preguntar_direccion(cfg: dict, hoy: date) -> tuple[list[Deteccion], list[str
     return out, avisos
 
 
+def preguntar_cocina(cfg: dict, hoy: date) -> tuple[list[str], list[str], list[str]]:
+    """Le pregunta al experto en cocina qué se cocina hoy y qué falta comprar.
+
+    Mismo patrón que `preguntar_direccion`: el orquestador pregunta, el experto
+    responde. El orquestador no elige recetas ni opina de comida.
+    """
+    if not cfg.get("compras", {}).get("en_brief", False):
+        return [], [], []
+    try:
+        import compras
+    except ImportError:
+        return [], [], ["compras.py no está junto a brief.py"]
+    try:
+        comidas, _ing, avisos = compras.ingredientes_de_hoy(cfg, hoy)
+        if not comidas:
+            return [], [], avisos
+        faltan = compras.cmd_falta(cfg, hoy, imprimir=False)
+        return [c.receta for c in comidas], faltan, avisos
+    except Exception as exc:
+        return [], [], [f"cocina: {exc}"]
+
+
 # ──────────────────────────────────────────────── 3. COMPONER — sin modelo ──
 
 def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date) -> list[tuple[datetime, datetime]]:
@@ -330,6 +354,16 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
             L.append(f" {str(r.dias_vencido(b.hoy)) + 'd tarde':>12}   {titulo_rec(r)}")
         L.append("")
 
+    if b.comidas:
+        L.append("COCINA")
+        for c in b.comidas:
+            L.append(f"   {c}")
+        if b.falta_comprar:
+            L.append(f"   falta comprar: {', '.join(b.falta_comprar)}")
+        else:
+            L.append("   ya tenés todo en la lista")
+        L.append("")
+
     if b.detecciones:
         L.append("NECESITA DECISIÓN  (lo detectó el experto en dirección)")
         for det in b.detecciones:
@@ -355,6 +389,8 @@ def resumen(b: Brief) -> str:
         partes.append(f"{pend} recordatorio(s)")
     if b.detecciones:
         partes.append(f"{len(b.detecciones)} para decidir")
+    if b.falta_comprar:
+        partes.append(f"{len(b.falta_comprar)} de compras")
     return " · ".join(partes) if partes else "Día despejado"
 
 
@@ -428,6 +464,9 @@ def main(argv=None) -> int:
 
     dets, avisos = preguntar_direccion(cfg, hoy)
     b.detecciones, b.avisos = dets, b.avisos + avisos
+
+    b.comidas, b.falta_comprar, avisos_cocina = preguntar_cocina(cfg, hoy)
+    b.avisos += avisos_cocina
 
     texto = componer(b, cfg)
 

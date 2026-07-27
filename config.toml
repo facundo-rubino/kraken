@@ -32,6 +32,18 @@ state_dir = "~/projects/direction-state"
 # El estado CORPORATIVO queda deliberadamente fuera (D29): se dirige desde la
 # cuenta Team y el orquestador no lo alcanza. No agregues su ruta acá.
 
+[compras]
+# Lista canónica de compras: Recordatorios de Apple. Cookidoo es de dónde salen
+# los ingredientes, no dónde vive la lista (una sola fuente por tipo de contenido).
+lista = "Compras"
+
+# Archivo que produce el asistente de cocina con lo que se cocina cada día.
+# Formato en el docstring de compras.py. Si no existe, el brief lo saltea.
+plan_comidas = "~/experts/cooking-kb/plan-comidas.yaml"
+
+# ¿Mostrar "falta comprar" en el brief de la mañana?
+en_brief = true
+
 [entrega]
 # Orden de entrega. Se ejecutan todas las que estén en la lista.
 #   archivo_icloud   — escribe el brief en iCloud Drive (lo ves en Archivos del iPhone)

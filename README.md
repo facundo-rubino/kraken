@@ -25,8 +25,39 @@ canales de entrega). **No edites `brief.py` para configurar.**
 |---|---|---|
 | 1. Leer | Calendario y Recordatorios de hoy, vía EventKit | `leer_calendario`, `leer_recordatorios` |
 | 2. Preguntar | `pm-assistant`: compromisos vencidos, hitos, zombis, fechas próximas | `preguntar_direccion` |
+| 2b. Preguntar | cocina: qué se cocina hoy y qué falta comprar | `preguntar_cocina` |
 | 3. Componer | Texto plano, determinístico | `componer` |
 | 4. Entregar | iCloud Drive + iMessage (default) | `entregar` |
+
+## Lista de compras (`compras.py`)
+
+```bash
+python compras.py falta               # qué falta para cocinar hoy
+python compras.py sincronizar         # agrega a Recordatorios lo que falta
+python compras.py tengo "leche"       # "ya tengo leche" → lo saca de la lista
+python compras.py lista               # la lista tal cual está
+```
+
+**La lista canónica es Recordatorios de Apple** — es donde vas a mirar en el súper.
+Cookidoo es de dónde salen los ingredientes, no dónde vive la lista.
+
+**El experto en cocina escribe el plan; este script solo hace el diff y escribe la
+lista.** No elige recetas, no sustituye ingredientes, no opina de nutrición.
+Contrato (`plan_comidas` en `config.toml`):
+
+```yaml
+2026-07-28:
+  - receta: Risotto de hongos
+    ingredientes: [arroz arborio, hongos, caldo de verduras, manteca, parmesano]
+  - receta: Ensalada tibia
+    ingredientes: [espinaca, nueces, queso de cabra]
+```
+
+**`tengo` nunca adivina.** Si "leche" coincide con un solo ítem, lo saca y te dice
+cuál. Si coincide con varios, te los lista y pregunta. Si no coincide con nada, lo
+dice y no toca nada. El matching es conservador a propósito: `leche` sí encuentra
+`Leche entera 1 L` pero no `lechuga`; `ajo` **no** encuentra `ajos` (singular/plural
+no se resuelve — preferible no borrar de más).
 
 **No llama a ningún modelo.** Es determinístico, instantáneo y gratis. Si algún día
 querés prosa en vez de listas, eso es un paso aparte y opcional — no el default.
@@ -77,7 +108,10 @@ experto con datos de ejemplo. **No toca EventKit**, así que corre en cualquier 
 |---|---|
 | Composición, huecos libres, redacción de perímetro | **Probado** |
 | Consulta al experto en dirección | **Probado** contra el estado real de `pm-assistant` |
+| Matching de ingredientes, parser del plan, diff de compras | **Probado** (9 casos de matching + parser + dedup) |
+| Sección COCINA dentro del brief | **Probado** con la lista mockeada |
 | Lectura de EventKit (calendario y recordatorios) | **Sin probar** — necesita macOS |
+| Escritura en Recordatorios (agregar / quitar) | **Sin probar** — necesita macOS |
 | Entrega (iMessage, iCloud, notificación) | **Sin probar** — necesita macOS |
 | launchd | **Sin probar** — necesita macOS |
 
