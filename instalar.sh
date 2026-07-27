@@ -14,8 +14,51 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 [[ "$(uname)" == "Darwin" ]] || { echo "Esto es solo para macOS."; exit 1; }
 
-echo "==> 1/5  Entorno virtual"
-python3 -m venv "$AQUI/.venv"
+# ── Python ≥3.12 ────────────────────────────────────────────────────────────
+# El `python3` del sistema en macOS suele ser 3.9, y NO alcanza: brief.py usa
+# tomllib (3.11+) y pm-assistant exige >=3.12. Se busca uno válido ANTES de
+# construir nada, para no dejar un venv roto a medio armar.
+sirve() {
+  command -v "$1" >/dev/null 2>&1 &&
+  "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3,12) else 1)' 2>/dev/null
+}
+
+PY=""
+if [[ -n "${PYTHON:-}" ]]; then
+  sirve "$PYTHON" && PY="$PYTHON" || {
+    echo "ERROR: PYTHON=$PYTHON no es 3.12+ o no existe."; exit 1; }
+else
+  for cand in python3.14 python3.13 python3.12 \
+              /opt/homebrew/bin/python3.14 /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 \
+              /usr/local/bin/python3.13 /usr/local/bin/python3.12 \
+              python3; do
+    if sirve "$cand"; then PY="$cand"; break; fi
+  done
+fi
+
+if [[ -z "$PY" ]]; then
+  cat >&2 <<ERR
+
+ERROR: no encontré Python 3.12 o superior.
+  Tu python3 es: $(python3 -V 2>&1)
+
+  Instalalo y volvé a correr esto:
+      brew install python@3.12
+
+  Si ya lo tenés en otra ruta:
+      PYTHON=/ruta/a/python3.12 ./instalar.sh ${PM_REPO:-}
+ERR
+  exit 1
+fi
+
+echo "==> 1/5  Entorno virtual — $("$PY" -V) desde $(command -v "$PY")"
+# Si quedó un venv con la versión equivocada de un intento anterior, se rehace.
+if [[ -x "$AQUI/.venv/bin/python" ]] && \
+   ! "$AQUI/.venv/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3,12) else 1)' 2>/dev/null; then
+  echo "    (había un venv con $("$AQUI/.venv/bin/python" -V 2>&1) — lo rehago)"
+  rm -rf "$AQUI/.venv"
+fi
+"$PY" -m venv "$AQUI/.venv"
 "$AQUI/.venv/bin/pip" install --quiet --upgrade pip
 
 echo "==> 2/5  EventKit (PyObjC)"

@@ -18,6 +18,11 @@ dónde va algo, se resuelve ahí.
 
 ## Instalación
 
+**Requiere Python 3.12+.** El `python3` del sistema en macOS es 3.9 y no sirve:
+`brief.py` usa `tomllib` (3.11+) y `pm-assistant` exige 3.12. `instalar.sh` busca uno
+válido solo y falla con instrucciones si no lo encuentra (`brew install python@3.12`,
+o pasale `PYTHON=/ruta/a/python3.12`).
+
 ```bash
 # 1. Los expertos y el vault de Obsidian
 chmod +x experts.sh instalar.sh

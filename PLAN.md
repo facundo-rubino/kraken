@@ -36,6 +36,18 @@ cp config.toml config.local.toml     # editá ESTA, no config.toml
 | **`compras.en_brief = false`** | **Importante.** El chef no existe todavía; si lo dejás en `true`, cada brief va a traer un aviso de "no hay plan de comidas". Se prende en la Fase 2 |
 | `direccion.state_dir` | `~/projects/direction-state` |
 
+**Requisito: Python 3.12+.** El `python3` del sistema en macOS es 3.9 y no alcanza —
+`brief.py` usa `tomllib` (3.11+) y `pm-assistant` exige 3.12. `instalar.sh` lo busca solo
+(prueba `python3.14/13/12`, rutas de Homebrew, y `python3`) y **falla temprano con
+instrucciones** si no hay ninguno, en vez de dejar un venv roto:
+
+```bash
+brew install python@3.12          # si no lo tenés
+PYTHON=/ruta/a/python3.12 ./instalar.sh ~/projects/pm-assistant   # si está en otro lado
+```
+
+Si de un intento anterior quedó un venv con la versión equivocada, lo detecta y lo rehace.
+
 `instalar.sh` corre un `--dry-run` y **te frena** si no confirmás que viste tu agenda
 real. Es a propósito: un brief programado que no ve el calendario es peor que no tenerlo.
 
