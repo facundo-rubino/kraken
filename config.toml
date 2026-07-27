@@ -16,7 +16,43 @@ corporativos = ["Trabajo", "Universidad", "Work"]
 
 # Ventana del día que considerás "tu día" para calcular huecos libres.
 hora_inicio = 8
-hora_fin = 21
+hora_fin = 22
+
+# ── Compromisos fijos ───────────────────────────────────────────────────────
+# Lo que estructura tu semana y NO vive como eventos en el calendario: el
+# trabajo de oficina, las clases. Sin esto el brief diría "13 h libres" todos
+# los días, que es falso.
+#
+#   dias         lu ma mi ju vi sa do
+#   desde/hasta  HH:MM
+#   desde_fecha / hasta_fecha  (opcional) para lo estacional
+#
+# El horario de oficina se parte en dos bloques para que el almuerzo aparezca
+# como hueco real.
+
+[[fijos]]
+nombre = "Oficina"
+dias = ["lu", "ma", "mi", "ju", "vi"]
+desde = "08:00"
+hasta = "12:45"
+
+[[fijos]]
+nombre = "Oficina"
+dias = ["lu", "ma", "mi", "ju", "vi"]
+desde = "13:45"
+hasta = "17:00"
+
+# Clases: solo de marzo a junio, y el horario todavía no está.
+# Cuando lo tengas, descomentá, poné los días y las horas reales, y ajustá el
+# horario de oficina de 2027 según la modificación que pidas.
+#
+# [[fijos]]
+# nombre = "Clases"
+# dias = ["lu", "mi"]
+# desde = "18:00"
+# hasta = "21:30"
+# desde_fecha = "2027-03-01"
+# hasta_fecha = "2027-06-30"
 
 [recordatorios]
 # Listas de Recordatorios a mirar. Vacío = todas.

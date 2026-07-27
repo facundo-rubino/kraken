@@ -76,6 +76,17 @@ class Recordatorio:
 
 
 @dataclass
+class Bloque:
+    """Compromiso fijo y recurrente que no vive en el calendario."""
+    nombre: str
+    inicio: datetime
+    fin: datetime
+
+    def franja(self) -> str:
+        return f"{self.inicio:%H:%M}–{self.fin:%H:%M}"
+
+
+@dataclass
 class Deteccion:
     iniciativa: str
     tipo: str
@@ -88,6 +99,7 @@ class Brief:
     eventos: list[Evento] = field(default_factory=list)
     recordatorios: list[Recordatorio] = field(default_factory=list)
     detecciones: list[Deteccion] = field(default_factory=list)
+    fijos: list[Bloque] = field(default_factory=list)  # trabajo, clases…
     comidas: list[str] = field(default_factory=list)   # recetas de hoy
     falta_comprar: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)   # fallos honestos, no se ocultan
@@ -279,10 +291,51 @@ def preguntar_cocina(cfg: dict, hoy: date) -> tuple[list[str], list[str], list[s
         return [], [], [f"cocina: {exc}"]
 
 
+# ────────────────────────────────── compromisos fijos (no están en el calendario) ──
+
+DIAS_CORTOS = ["lu", "ma", "mi", "ju", "vi", "sa", "do"]
+
+
+def _hora(txt: str) -> time:
+    h, m = txt.split(":")
+    return time(int(h), int(m))
+
+
+def bloques_fijos(cfg: dict, hoy: date) -> list[Bloque]:
+    """Compromisos recurrentes declarados a mano, que NO viven en el calendario.
+
+    El trabajo de oficina y las clases no son eventos: son la estructura fija de
+    la semana. Sin esto el brief diría "13 h libres" todos los días, que es
+    falso y hace inútil el cálculo de huecos.
+
+    Cada bloque puede tener una ventana de fechas (`desde_fecha`/`hasta_fecha`)
+    para lo estacional — dar clase solo de marzo a junio, por ejemplo.
+    """
+    hoy_corto = DIAS_CORTOS[hoy.weekday()]
+    out: list[Bloque] = []
+    for f in cfg.get("fijos", []):
+        dias = [d.strip().lower()[:2] for d in f.get("dias", [])]
+        if hoy_corto not in dias:
+            continue
+        d1, d2 = f.get("desde_fecha"), f.get("hasta_fecha")
+        if d1 and hoy < date.fromisoformat(str(d1)):
+            continue
+        if d2 and hoy > date.fromisoformat(str(d2)):
+            continue
+        out.append(Bloque(
+            nombre=f.get("nombre", "(sin nombre)"),
+            inicio=datetime.combine(hoy, _hora(f["desde"])),
+            fin=datetime.combine(hoy, _hora(f["hasta"])),
+        ))
+    out.sort(key=lambda b: b.inicio)
+    return out
+
+
 # ──────────────────────────────────────────────── 3. COMPONER — sin modelo ──
 
-def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date) -> list[tuple[datetime, datetime]]:
-    """Bloques libres dentro de tu día.
+def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date,
+                  fijos: list[Bloque] | None = None) -> list[tuple[datetime, datetime]]:
+    """Bloques libres dentro de tu día, descontando eventos Y compromisos fijos.
 
     Determinístico a propósito. A futuro esto es lo que se le entrega al experto
     en dirección como CAPACIDAD DECLARADA (Q-S3 de la Spec 002) — por eso vive
@@ -291,10 +344,14 @@ def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date) -> list[tuple[dat
     dia_ini = datetime.combine(hoy, time(cfg["calendario"]["hora_inicio"]))
     dia_fin = datetime.combine(hoy, time(cfg["calendario"]["hora_fin"]))
 
+    tramos = [(e.inicio, e.fin) for e in eventos
+              if not e.todo_el_dia and e.inicio and e.fin]
+    tramos += [(b.inicio, b.fin) for b in (fijos or [])]
+
     ocupado = sorted(
-        (max(e.inicio, dia_ini), min(e.fin, dia_fin))
-        for e in eventos
-        if not e.todo_el_dia and e.inicio and e.fin and e.fin > dia_ini and e.inicio < dia_fin
+        (max(i, dia_ini), min(f, dia_fin))
+        for i, f in tramos
+        if f > dia_ini and i < dia_fin
     )
 
     fusionado: list[list[datetime]] = []
@@ -342,11 +399,20 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
         comprometido = sum(e.duracion_min() for e in b.eventos)
         if comprometido:
             L.append(f"{'':>14}  ({_hhmm(comprometido)} comprometidas)")
-    else:
+    elif not b.fijos:
         L.append("AGENDA — el día está vacío.")
-    L.append("")
+    if b.eventos or not b.fijos:
+        L.append("")
 
-    libres = huecos_libres(b.eventos, cfg, b.hoy)
+    if b.fijos:
+        porNombre: dict[str, list[str]] = {}
+        for bl in b.fijos:
+            porNombre.setdefault(bl.nombre, []).append(bl.franja())
+        for nombre, franjas in porNombre.items():
+            L.append(f"FIJO   {nombre}: " + " · ".join(franjas))
+        L.append("")
+
+    libres = huecos_libres(b.eventos, cfg, b.hoy, b.fijos)
     if libres:
         trozos = [f"{i:%H:%M}–{f:%H:%M}" for i, f in libres]
         total = sum(int((f - i).total_seconds() // 60) for i, f in libres)
@@ -469,6 +535,11 @@ def main(argv=None) -> int:
         except Exception as exc:
             # Una fuente caída degrada el brief; no lo cancela. Y se dice.
             b.avisos.append(f"{nombre}: {exc}")
+
+    try:
+        b.fijos = bloques_fijos(cfg, hoy)
+    except Exception as exc:
+        b.avisos.append(f"compromisos fijos mal configurados: {exc}")
 
     dets, avisos = preguntar_direccion(cfg, hoy)
     b.detecciones, b.avisos = dets, b.avisos + avisos

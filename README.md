@@ -66,6 +66,26 @@ canales de entrega). **No edites `brief.py` para configurar.**
 | 3. Componer | Texto plano, determinístico | `componer` |
 | 4. Entregar | iCloud Drive + iMessage (default) | `entregar` |
 
+## Compromisos fijos
+
+Lo que estructura tu semana y **no vive como eventos en el calendario** —el horario
+de oficina, las clases— se declara en `config.local.toml` y se descuenta de los huecos
+libres igual que un evento. Sin esto el brief diría "13 h libres" todos los días.
+
+```toml
+[[fijos]]
+nombre = "Oficina"
+dias = ["lu", "ma", "mi", "ju", "vi"]
+desde = "08:00"
+hasta = "12:45"          # partido en dos para que el almuerzo sea hueco real
+```
+
+Para lo estacional —dar clase solo de marzo a junio— agregá `desde_fecha` y
+`hasta_fecha`. Fuera de esa ventana el bloque no aplica y los huecos vuelven solos.
+
+Esto es la **capacidad declarada** que el experto en dirección va a recibir cuando
+exista la Spec 002: kraken la calcula, el planificador planifica sobre ella.
+
 ## Lista de compras (`compras.py`)
 
 ```bash
