@@ -1,9 +1,9 @@
-# Configuración del orquestador personal.
+# Configuración del asistente personal.
 # Editá esto, no el código.
 
 [identidad]
 # Solo para el saludo y para elegir a quién se manda el iMessage.
-apple_id = "facundorubino21@gmail.com"
+apple_id = "TU-APPLE-ID@ejemplo.com"
 
 [calendario]
 # Calendarios que NO querés ver en el brief (cumpleaños, feriados de terceros…).
@@ -26,11 +26,11 @@ vencidos_dias = 14
 
 [direccion]
 # El experto en dirección de iniciativas (pm-assistant).
-# El orquestador le PREGUNTA; el experto nunca empuja. ROUTER.md §6.
+# Kraken le PREGUNTA; el experto nunca empuja. ROUTER.md §6.
 # Dejalo vacío ("") para saltear la consulta.
 state_dir = "~/projects/direction-state"
 # El estado CORPORATIVO queda deliberadamente fuera (D29): se dirige desde la
-# cuenta Team y el orquestador no lo alcanza. No agregues su ruta acá.
+# cuenta Team y kraken no lo alcanza. No agregues su ruta acá.
 
 [compras]
 # Lista canónica de compras: Recordatorios de Apple. Cookidoo es de dónde salen

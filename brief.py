@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Brief diario — orquestador personal.
+"""Brief diario — asistente personal.
 
     python brief.py                 # arma el brief y lo entrega
     python brief.py --dry-run       # lo imprime, no entrega nada
@@ -13,9 +13,9 @@ Cuatro pasos, en este orden y sin mezclarse:
   4. ENTREGAR  por los canales configurados
 
 Reglas que este archivo hace cumplir (ROUTER.md):
-  · El experto DETECTA; el orquestador AVISA. Acá se le pregunta, nunca se le ordena.
+  · El experto DETECTA; kraken AVISA. Acá se le pregunta, nunca se le ordena.
   · De calendarios corporativos se leen SOLO título, horario y duración (D29).
-  · El orquestador no decide nada ni escribe en ninguna fuente. Solo lee y cuenta.
+  · Kraken no decide nada ni escribe en ninguna fuente. Solo lee y cuenta.
 """
 from __future__ import annotations
 
@@ -29,6 +29,14 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
+
+
+def config_por_defecto() -> Path:
+    """`config.local.toml` si existe (tu config real, fuera de git); si no, la plantilla."""
+    local = AQUI / "config.local.toml"
+    return local if local.is_file() else AQUI / "config.toml"
+
+
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -252,8 +260,8 @@ def preguntar_direccion(cfg: dict, hoy: date) -> tuple[list[Deteccion], list[str
 def preguntar_cocina(cfg: dict, hoy: date) -> tuple[list[str], list[str], list[str]]:
     """Le pregunta al experto en cocina qué se cocina hoy y qué falta comprar.
 
-    Mismo patrón que `preguntar_direccion`: el orquestador pregunta, el experto
-    responde. El orquestador no elige recetas ni opina de comida.
+    Mismo patrón que `preguntar_direccion`: kraken pregunta, el experto
+    responde. Kraken no elige recetas ni opina de comida.
     """
     if not cfg.get("compras", {}).get("en_brief", False):
         return [], [], []
@@ -444,12 +452,12 @@ def entregar(b: Brief, cfg: dict, texto: str) -> list[str]:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="brief")
-    ap.add_argument("--config", type=Path, default=AQUI / "config.toml")
+    ap.add_argument("--config", type=Path, default=None)
     ap.add_argument("--hoy", default=None, help="YYYY-MM-DD (default: hoy)")
     ap.add_argument("--dry-run", action="store_true", help="imprime, no entrega")
     args = ap.parse_args(argv)
 
-    cfg = tomllib.loads(args.config.read_text(encoding="utf-8"))
+    cfg = tomllib.loads((args.config or config_por_defecto()).read_text(encoding="utf-8"))
     hoy = date.fromisoformat(args.hoy) if args.hoy else date.today()
     b = Brief(hoy=hoy)
 

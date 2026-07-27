@@ -9,7 +9,7 @@ set -euo pipefail
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PM_REPO="${1:-}"
 HORA="${HORA_BRIEF:-7}"
-LABEL="personal.orquestador.brief"
+LABEL="personal.kraken.brief"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 [[ "$(uname)" == "Darwin" ]] || { echo "Esto es solo para macOS."; exit 1; }

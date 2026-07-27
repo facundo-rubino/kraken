@@ -48,7 +48,7 @@ Eso es todo. El resto de este archivo existe solo para resolver dudas de "¿esto
 
 ```
 ~/experts/                  teaching-kb · fitness-kb · cooking-kb   (un repo cada uno)
-~/projects/orquestador      este repo — el asistente personal
+~/projects/kraken      este repo — el asistente personal
 ~/projects/pm-assistant     el project manager
 ~/projects/direction-state  tus iniciativas reales (fuera del vault de Obsidian)
 ```

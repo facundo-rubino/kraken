@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+brief.log
+
+# Tu configuración real: nunca se versiona (este repo es público)
+config.local.toml

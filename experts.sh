@@ -51,7 +51,7 @@ if [[ ! -f "$RAIZ/INDICE.md" ]]; then
 # Expertos
 
 Cada carpeta es un experto con dueño declarado y su propio repo git.
-Las fronteras están en el `ROUTER.md` del orquestador.
+Las fronteras están en el `ROUTER.md` dkraken.
 
 ## Quién es quién
 

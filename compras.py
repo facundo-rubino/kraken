@@ -41,6 +41,12 @@ from pathlib import Path
 AQUI = Path(__file__).resolve().parent
 
 
+def config_por_defecto() -> Path:
+    """`config.local.toml` si existe (tu config real, fuera de git); si no, la plantilla."""
+    local = AQUI / "config.local.toml"
+    return local if local.is_file() else AQUI / "config.toml"
+
+
 # ─────────────────────────────────────────────────────────────── normalizar ──
 
 def norm(s: str) -> str:
@@ -247,12 +253,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="compras")
     ap.add_argument("cmd", choices=["falta", "sincronizar", "tengo", "lista"])
     ap.add_argument("texto", nargs="?", default="")
-    ap.add_argument("--config", type=Path, default=AQUI / "config.toml")
+    ap.add_argument("--config", type=Path, default=None)
     ap.add_argument("--hoy", default=None)
     ap.add_argument("--si", action="store_true", help="no preguntar ante ambigüedad")
     a = ap.parse_args(argv)
 
-    cfg = tomllib.loads(a.config.read_text(encoding="utf-8"))
+    cfg = tomllib.loads((a.config or config_por_defecto()).read_text(encoding="utf-8"))
     dia = date.fromisoformat(a.hoy) if a.hoy else date.today()
 
     try:

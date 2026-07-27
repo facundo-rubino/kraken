@@ -1,7 +1,9 @@
-# Orquestador personal
+# Kraken
 
 La capa de arriba del ecosistema. Lee tu tiempo, le pregunta a los expertos, y es
 **lo único con permiso de interrumpirte**.
+
+Empezá por **[CONTEXTO.md](CONTEXTO.md)** si venís nuevo.
 
 Acá vive también el **[ROUTER.md](ROUTER.md)**: el contrato de fronteras del
 ecosistema — quién posee qué y, sobre todo, **qué no posee cada uno**. Si no sabés
@@ -94,7 +96,7 @@ querés prosa en vez de listas, eso es un paso aparte y opcional — no el defau
 
 ## Las reglas que este código hace cumplir
 
-**El experto detecta; el orquestador avisa.** `preguntar_direccion` *le pregunta* a
+**El experto detecta; kraken avisa.** `preguntar_direccion` *le pregunta* a
 `pm-assistant` importando su API de Python. El experto nunca empuja ni notifica.
 Cuando sumes el experto docente o el de fitness, se agregan como funciones
 hermanas — no como agentes que te escriben por su cuenta.
@@ -162,7 +164,7 @@ Privacidad y seguridad → Calendarios / Recordatorios, y habilitá el binario
 al despertar si la hora pasó dormido, así que el brief puede llegarte tarde pero
 no se pierde.
 
-## Lo que este orquestador NO hace, y no debería
+## Lo que este kraken NO hace, y no debería
 
 - No decide nada. No aprueba nada. No escribe en ninguna fuente.
 - No guarda estado de iniciativas: eso es del experto en dirección.
