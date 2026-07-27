@@ -3,7 +3,7 @@
 La capa de arriba del ecosistema. Lee tu tiempo, le pregunta a los expertos, y es
 **lo único con permiso de interrumpirte**.
 
-Empezá por **[CONTEXTO.md](CONTEXTO.md)** si venís nuevo.
+Empezá por **[CONTEXTO.md](CONTEXTO.md)** si venís nuevo, y **[PLAN.md](PLAN.md)** para saber qué sigue.
 
 Acá vive también el **[ROUTER.md](ROUTER.md)**: el contrato de fronteras del
 ecosistema — quién posee qué y, sobre todo, **qué no posee cada uno**. Si no sabés

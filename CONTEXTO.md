@@ -34,6 +34,9 @@ Tu asistente personal. Lee tu tiempo, le pregunta a los especialistas, y es lo
 | **Coach fitness** | — | **No existe.** Vive dentro de AnkoFit |
 | **Chef** | asistente Cookidoo | Existe como asistente; sin KB propio |
 
+> El plan completo —fases, puerta de decisión al día 7 y qué NO hacer— está en
+> **[PLAN.md](PLAN.md)**.
+
 ## El único paso siguiente
 
 **Poner el brief a andar en la Mac y usarlo una semana.** Nada más.
