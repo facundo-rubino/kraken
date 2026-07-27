@@ -1,17 +1,47 @@
-# Orquestador personal — brief diario
+# Orquestador personal
 
-Primera pieza de la capa de orquestación descrita en `ROUTER.md` (hoy en el repo
-`pm-assistant`, se muda acá cuando esto crezca).
+La capa de arriba del ecosistema. Lee tu tiempo, le pregunta a los expertos, y es
+**lo único con permiso de interrumpirte**.
 
-Hace **una sola cosa**: cada mañana lee tu tiempo, le pregunta a los expertos qué
-detectaron, y te lo manda al teléfono. Nada más.
+Acá vive también el **[ROUTER.md](ROUTER.md)**: el contrato de fronteras del
+ecosistema — quién posee qué y, sobre todo, **qué no posee cada uno**. Si no sabés
+dónde va algo, se resuelve ahí.
+
+| Pieza | Qué hace |
+|---|---|
+| `brief.py` | El brief de la mañana: agenda, huecos libres, recordatorios, qué necesita decisión, qué falta comprar |
+| `compras.py` | Lista de compras: diff entre las recetas de hoy y Recordatorios |
+| `experts.sh` | Arma `~/experts/` con un repo por experto + vault de Obsidian encima |
+| `ROUTER.md` | Fronteras del ecosistema |
 
 ## Instalación
 
 ```bash
-chmod +x instalar.sh
+# 1. Los expertos y el vault de Obsidian
+chmod +x experts.sh instalar.sh
+./experts.sh
+
+# 2. El brief diario
 ./instalar.sh ~/projects/pm-assistant     # la ruta es opcional
 ```
+
+## Obsidian sobre `~/experts/`
+
+`experts.sh` deja un vault listo sobre la carpeta madre. Abrí Obsidian →
+*Open folder as vault* → `~/experts`.
+
+Qué te da, sin escribir una línea de código: búsqueda y **backlinks entre expertos**
+(una regla de fitness citando una receta, una decisión docente citando una fecha del
+plan), vista de grafo del ecosistema, y edición desde el iPhone sobre el mismo
+archivo que versiona git.
+
+**Por qué Obsidian no necesita la decisión de gobernanza que Notion sí necesitó:**
+Obsidian *abre el archivo*, Notion *lo copia*. No hay segunda versión que gobernar.
+Un conflicto acá es un archivo sin commitear, no una verdad paralela.
+
+**Dónde no va:** el estado de dirección (`~/projects/direction-state`) queda **fuera
+del vault**. Se valida contra `iniciativa.v1.json` y Obsidian te dejaría romperlo sin
+avisar. Editor de conocimiento sí; editor de estado validado no.
 
 El instalador te frena si la primera corrida no ve tu agenda real. Es a propósito:
 un brief programado que no ve el calendario es peor que no tener brief.
