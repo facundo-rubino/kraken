@@ -360,6 +360,32 @@ def bloques_fijos(cfg: dict, hoy: date) -> list[Bloque]:
 
 # ──────────────────────────────────────────────── 3. COMPONER — sin modelo ──
 
+def ocupado_fusionado(eventos: list[Evento], cfg: dict, hoy: date,
+                      fijos: list[Bloque] | None = None) -> list[tuple[datetime, datetime]]:
+    """Tiempo realmente ocupado, con los solapamientos fusionados.
+
+    Un mandado de 1 h DENTRO del horario de trabajo no te ocupa una hora más:
+    ya estabas ocupado. Sumar duraciones sueltas informa 9 h en un día de 8.
+    """
+    dia_ini = datetime.combine(hoy, time(cfg["calendario"]["hora_inicio"]))
+    dia_fin = datetime.combine(hoy, time(cfg["calendario"]["hora_fin"]))
+
+    tramos = [(e.inicio, e.fin) for e in eventos
+              if not e.todo_el_dia and e.inicio and e.fin]
+    tramos += [(b.inicio, b.fin) for b in (fijos or [])]
+
+    recortado = sorted((max(i, dia_ini), min(f, dia_fin))
+                       for i, f in tramos if f > dia_ini and i < dia_fin)
+
+    fusionado: list[list[datetime]] = []
+    for ini, fin in recortado:
+        if fusionado and ini <= fusionado[-1][1]:
+            fusionado[-1][1] = max(fusionado[-1][1], fin)
+        else:
+            fusionado.append([ini, fin])
+    return [(i, f) for i, f in fusionado]
+
+
 def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date,
                   fijos: list[Bloque] | None = None) -> list[tuple[datetime, datetime]]:
     """Bloques libres dentro de tu día, descontando eventos Y compromisos fijos.
@@ -371,22 +397,7 @@ def huecos_libres(eventos: list[Evento], cfg: dict, hoy: date,
     dia_ini = datetime.combine(hoy, time(cfg["calendario"]["hora_inicio"]))
     dia_fin = datetime.combine(hoy, time(cfg["calendario"]["hora_fin"]))
 
-    tramos = [(e.inicio, e.fin) for e in eventos
-              if not e.todo_el_dia and e.inicio and e.fin]
-    tramos += [(b.inicio, b.fin) for b in (fijos or [])]
-
-    ocupado = sorted(
-        (max(i, dia_ini), min(f, dia_fin))
-        for i, f in tramos
-        if f > dia_ini and i < dia_fin
-    )
-
-    fusionado: list[list[datetime]] = []
-    for ini, fin in ocupado:
-        if fusionado and ini <= fusionado[-1][1]:
-            fusionado[-1][1] = max(fusionado[-1][1], fin)
-        else:
-            fusionado.append([ini, fin])
+    fusionado = ocupado_fusionado(eventos, cfg, hoy, fijos)
 
     libres, cursor = [], dia_ini
     for ini, fin in fusionado:
@@ -423,7 +434,8 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
         for e in b.eventos:
             marca = " ·" if e.corporativo else "  "
             L.append(f" {e.franja(b.hoy):>12}{marca} {titulo_de(e)}")
-        comprometido = sum(e.duracion_min() for e in b.eventos)
+        comprometido = sum(int((f - i).total_seconds() // 60)
+                           for i, f in ocupado_fusionado(b.eventos, cfg, b.hoy, b.fijos))
         if comprometido:
             L.append(f"{'':>14}  ({_hhmm(comprometido)} comprometidas)")
     elif not b.fijos:

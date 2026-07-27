@@ -76,6 +76,29 @@ check("reunión dentro de oficina no descuenta dos veces", libre_min(b) == 360,
 b = brief_de(MARTES, [ev("Cena", 20, 0, 21, 0)])
 check("evento fuera de oficina sí descuenta", libre_min(b) == 300, f"{libre_min(b)} min")
 
+# ── solapamiento: un mandado dentro del trabajo no suma horas ────────────────
+
+def comprometido(b, cfg=CFG):
+    return sum(int((f - i).total_seconds() // 60)
+               for i, f in B.ocupado_fusionado(b.eventos, cfg, b.hoy, b.fijos))
+
+SIN_FIJOS = {**CFG, "fijos": []}
+b = B.Brief(hoy=MARTES)
+b.eventos = [ev("Trabajo", 8, 0, 16, 0, cal="Trabajo", corp=True),
+             ev("Cambio de filtro", 12, 30, 13, 30)]
+check("mandado dentro del trabajo no duplica", comprometido(b, SIN_FIJOS) == 480,
+      f"{comprometido(b, SIN_FIJOS)} min")
+
+b2 = B.Brief(hoy=MARTES)
+b2.eventos = [ev("Trabajo", 8, 0, 16, 0), ev("Cena", 20, 0, 21, 0)]
+check("evento fuera sí suma", comprometido(b2, SIN_FIJOS) == 540,
+      f"{comprometido(b2, SIN_FIJOS)} min")
+
+b3 = B.Brief(hoy=MARTES)
+b3.eventos = [ev("A", 9, 0, 11, 0), ev("B", 10, 0, 12, 0)]
+check("solapamiento parcial se fusiona", comprometido(b3, SIN_FIJOS) == 180,
+      f"{comprometido(b3, SIN_FIJOS)} min")
+
 # ── ventana estacional (clases marzo-junio) ──────────────────────────────────
 
 CFG2 = tomllib.loads((Path(__file__).parent / "config.toml").read_text(encoding="utf-8"))
