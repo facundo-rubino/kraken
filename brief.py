@@ -105,6 +105,8 @@ class Brief:
     detecciones: list[Deteccion] = field(default_factory=list)
     fijos: list[Bloque] = field(default_factory=list)  # trabajo, clases…
     anula_fijos: str | None = None                     # feriado que los cancela
+    manana: list[Evento] = field(default_factory=list)  # eventos de mañana
+    manana_arranca: datetime | None = None              # primer compromiso de mañana
     comidas: list[str] = field(default_factory=list)   # recetas de hoy
     falta_comprar: list[str] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)   # fallos honestos, no se ocultan
@@ -466,6 +468,19 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
             L.append("   ya tenés todo en la lista")
         L.append("")
 
+    if b.manana or b.manana_arranca:
+        cab = "MAÑANA"
+        # Solo se avisa la hora de arranque si es MÁS TEMPRANO que lo habitual.
+        # Decir "arranca 08:00" todos los días es ruido, no información.
+        if b.manana_arranca and b.manana_arranca.hour < cfg["calendario"]["hora_inicio"]:
+            cab += f" — arrancás {b.manana_arranca:%H:%M}, más temprano que de costumbre"
+        L.append(cab)
+        for e in b.manana[:4]:
+            L.append(f" {e.franja(b.hoy + timedelta(days=1)):>12}   {titulo_de(e)}")
+        if len(b.manana) > 4:
+            L.append(f"{'':>14}   (+{len(b.manana) - 4} más)")
+        L.append("")
+
     if b.detecciones:
         L.append("NECESITA DECISIÓN  (lo detectó el experto en dirección)")
         for det in b.detecciones:
@@ -571,6 +586,19 @@ def main(argv=None) -> int:
             b.anula_fijos = motivo
     except Exception as exc:
         b.avisos.append(f"compromisos fijos mal configurados: {exc}")
+
+    # Mañana: solo para saber si algo te espera temprano. Falla en silencio —
+    # es un extra, no puede voltear el brief de hoy.
+    try:
+        man = hoy + timedelta(days=1)
+        evs, _ = leer_calendario(cfg, man)
+        b.manana = [e for e in evs if not e.todo_el_dia and e.inicio]
+        candidatos = [e.inicio for e in b.manana]
+        if not anulan_fijos(cfg, evs):
+            candidatos += [f.inicio for f in bloques_fijos(cfg, man)]
+        b.manana_arranca = min(candidatos) if candidatos else None
+    except Exception:
+        pass
 
     dets, avisos = preguntar_direccion(cfg, hoy)
     b.detecciones, b.avisos = dets, b.avisos + avisos

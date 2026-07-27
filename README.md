@@ -15,6 +15,7 @@ dónde va algo, se resuelve ahí.
 | `compras.py` | Lista de compras: diff entre las recetas de hoy y Recordatorios |
 | `experts.sh` | Arma `~/experts/` con un repo por experto + vault de Obsidian encima |
 | `ROUTER.md` | Fronteras del ecosistema |
+| `.claude/skills/kraken/` | Para hablarle en lenguaje normal desde cualquier chat de Claude |
 
 ## Instalación
 
@@ -65,6 +66,17 @@ canales de entrega). **No edites `brief.py` para configurar.**
 | 2b. Preguntar | cocina: qué se cocina hoy y qué falta comprar | `preguntar_cocina` |
 | 3. Componer | Texto plano, determinístico | `componer` |
 | 4. Entregar | iCloud Drive + iMessage (default) | `entregar` |
+
+## Hablarle
+
+`instalar.sh` enlaza la skill a `~/.claude/skills/kraken`, así que desde **cualquier**
+sesión de Claude podés pedirle cosas sin acordarte de ningún comando:
+
+> "¿qué tengo hoy?" · "¿cuánto tiempo libre me queda?" · "¿qué tengo el lunes?"
+> "¿qué falta comprar?" · "ya tengo leche" · "¿por qué no me llegó el brief?"
+
+Es un symlink al `.claude/skills/kraken/` de este repo: una sola fuente, se actualiza
+con `git pull`, sin copias que se desincronicen.
 
 ## Compromisos fijos
 

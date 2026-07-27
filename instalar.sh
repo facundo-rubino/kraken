@@ -51,7 +51,7 @@ ERR
   exit 1
 fi
 
-echo "==> 1/5  Entorno virtual — $("$PY" -V) desde $(command -v "$PY")"
+echo "==> 1/6  Entorno virtual — $("$PY" -V) desde $(command -v "$PY")"
 # Si quedó un venv con la versión equivocada de un intento anterior, se rehace.
 if [[ -x "$AQUI/.venv/bin/python" ]] && \
    ! "$AQUI/.venv/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3,12) else 1)' 2>/dev/null; then
@@ -61,17 +61,17 @@ fi
 "$PY" -m venv "$AQUI/.venv"
 "$AQUI/.venv/bin/pip" install --quiet --upgrade pip
 
-echo "==> 2/5  EventKit (PyObjC)"
+echo "==> 2/6  EventKit (PyObjC)"
 "$AQUI/.venv/bin/pip" install --quiet pyobjc-framework-EventKit
 
 if [[ -n "$PM_REPO" ]]; then
-  echo "==> 3/5  Experto en dirección desde $PM_REPO"
+  echo "==> 3/6  Experto en dirección desde $PM_REPO"
   "$AQUI/.venv/bin/pip" install --quiet -e "$PM_REPO"
 else
-  echo "==> 3/5  (salteado: sin repo de pm-assistant; el brief irá sin la sección de dirección)"
+  echo "==> 3/6  (salteado: sin repo de pm-assistant; el brief irá sin la sección de dirección)"
 fi
 
-echo "==> 4/5  Primera corrida — macOS va a pedirte permisos AHORA."
+echo "==> 4/6  Primera corrida — macOS va a pedirte permisos AHORA."
 echo "         Aceptá Calendarios y Recordatorios. Si no aparece el diálogo:"
 echo "         Configuración del Sistema → Privacidad y seguridad → Calendarios."
 echo
@@ -86,7 +86,19 @@ read -r -p "¿Viste tu agenda real arriba? [s/N] " ok
   exit 1
 }
 
-echo "==> 5/5  Programando para las ${HORA}:00, de lunes a viernes"
+echo "==> 5/6  Skill de Claude"
+# La skill vive en el repo (se versiona con el código que invoca) pero se
+# enlaza a ~/.claude/skills/ para poder hablarle a kraken desde cualquier
+# sesión. Symlink, no copia: una sola fuente, sin drift.
+mkdir -p "$HOME/.claude/skills"
+if [[ -L "$HOME/.claude/skills/kraken" || ! -e "$HOME/.claude/skills/kraken" ]]; then
+  ln -sfn "$AQUI/.claude/skills/kraken" "$HOME/.claude/skills/kraken"
+  echo "    enlazada — ahora podés pedirle el brief desde cualquier chat"
+else
+  echo "    ya hay algo en ~/.claude/skills/kraken que no es un enlace — lo dejo"
+fi
+
+echo "==> 6/6  Programando para las ${HORA}:00, de lunes a viernes"
 mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
