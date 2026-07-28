@@ -9,6 +9,10 @@ Acá vive también el **[ROUTER.md](ROUTER.md)**: el contrato de fronteras del
 ecosistema — quién posee qué y, sobre todo, **qué no posee cada uno**. Si no sabés
 dónde va algo, se resuelve ahí.
 
+El futuro cerebro conversacional está diseñado, todavía como borrador, en
+**[PLAN-ORQUESTADOR.md](PLAN-ORQUESTADOR.md)**. No saltea la semana de validación
+del brief: empieza después de esa puerta.
+
 | Pieza | Qué hace |
 |---|---|
 | `brief.py` | El brief de la mañana: agenda, huecos libres, recordatorios, qué necesita decisión, qué falta comprar |
