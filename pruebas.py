@@ -164,6 +164,39 @@ _, _, av = C.ingredientes_de_hoy({"compras": {"plan_comidas": "/tmp/no-existe.ya
 check("plan ausente avisa, no explota", bool(av))
 plan.unlink(missing_ok=True)
 
+# ── buzones de captura ───────────────────────────────────────────────────────
+
+def buzon(items, dias=None):
+    return B.Buzon(nombre="X", items=items, dias_mas_viejo=dias)
+
+
+check("buzón vacío nunca habla", not buzon(0).merece_aviso(10, 7))
+check("buzón vacío calla aunque el umbral sea 0", not buzon(0, 99).merece_aviso(0, 7))
+check("pocos ítems y recientes: silencio", not buzon(3, 2).merece_aviso(10, 7))
+check("cruza por cantidad", buzon(10, 1).merece_aviso(10, 7))
+check("cruza por antigüedad aunque haya poco", buzon(1, 7).merece_aviso(10, 7))
+check("sin fecha del más viejo, decide la cantidad", buzon(12).merece_aviso(10, 7))
+check("sin fecha y pocos ítems: silencio", not buzon(2).merece_aviso(10, 7))
+check("umbral de días en 0 desactiva ese criterio",
+      not buzon(2, 400).merece_aviso(10, 0))
+
+# La sección no existe → la fuente no se mira y no se inventan avisos.
+check("sin [higiene] no hace nada", B.mirar_buzones({}, MARTES) == ([], []))
+check("[higiene] apagada no hace nada",
+      B.mirar_buzones({"higiene": {"en_brief": False}}, MARTES) == ([], []))
+check("[higiene] encendida sin fuentes no explota",
+      B.mirar_buzones({"higiene": {"en_brief": True, "inbox_recordatorios": "",
+                                   "inbox_notas": ""}}, MARTES) == ([], []))
+
+b = brief_de(MARTES)
+b.buzones = [buzon(14, 23)]
+texto = B.componer(b, CFG)
+check("el buzón se muestra con cantidad y antigüedad",
+      "14 ítem(s), el más viejo de hace 23 día(s)" in texto)
+check("el buzón entra en el resumen", "14 sin clasificar" in B.resumen(b))
+check("sin buzones no aparece la sección",
+      "BUZONES" not in B.componer(brief_de(MARTES), CFG))
+
 # ── resultado ────────────────────────────────────────────────────────────────
 
 print()

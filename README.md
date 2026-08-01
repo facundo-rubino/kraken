@@ -15,7 +15,7 @@ del brief: empieza después de esa puerta.
 
 | Pieza | Qué hace |
 |---|---|
-| `brief.py` | El brief de la mañana: agenda, huecos libres, recordatorios, qué necesita decisión, qué falta comprar |
+| `brief.py` | El brief de la mañana: agenda, huecos libres, recordatorios, qué necesita decisión, qué falta comprar, qué buzón se está llenando |
 | `compras.py` | Lista de compras: diff entre las recetas de hoy y Recordatorios |
 | `experts.sh` | Arma `~/experts/` con un repo por experto + vault de Obsidian encima |
 | `ROUTER.md` | Fronteras del ecosistema |

@@ -9,6 +9,7 @@ Cuatro pasos, en este orden y sin mezclarse:
 
   1. LEER      fuentes de tiempo (Calendario y Recordatorios vía EventKit)
   2. PREGUNTAR al experto en dirección (pm-assistant) qué detectó
+  2b. MIRAR    los buzones de captura — cuánto se acumuló sin clasificar
   3. COMPONER  el texto — determinístico, sin modelo, sin costo
   4. ENTREGAR  por los canales configurados
 
@@ -98,11 +99,36 @@ class Deteccion:
 
 
 @dataclass
+class Buzon:
+    """Una bandeja de entrada que se está llenando.
+
+    Kraken CUENTA lo que hay adentro; nunca mira qué es ni sugiere qué hacer
+    con cada ítem. "Tenés 14 sin clasificar" es tu atención, y es su trabajo.
+    "Consolidá esas dos planillas" es una decisión de dominio, y ROUTER.md se
+    lo prohíbe.
+    """
+    nombre: str
+    items: int
+    dias_mas_viejo: int | None = None
+
+    def merece_aviso(self, umbral_items: int, umbral_dias: int) -> bool:
+        """Solo habla si cruzó un umbral. Un aviso diario es ruido, no señal."""
+        if self.items == 0:
+            return False
+        if umbral_items and self.items >= umbral_items:
+            return True
+        return bool(umbral_dias
+                    and self.dias_mas_viejo is not None
+                    and self.dias_mas_viejo >= umbral_dias)
+
+
+@dataclass
 class Brief:
     hoy: date
     eventos: list[Evento] = field(default_factory=list)
     recordatorios: list[Recordatorio] = field(default_factory=list)
     detecciones: list[Deteccion] = field(default_factory=list)
+    buzones: list[Buzon] = field(default_factory=list)  # inboxes sin vaciar
     fijos: list[Bloque] = field(default_factory=list)  # trabajo, clases…
     anula_fijos: str | None = None                     # feriado que los cancela
     manana: list[Evento] = field(default_factory=list)  # eventos de mañana
@@ -296,6 +322,118 @@ def preguntar_cocina(cfg: dict, hoy: date) -> tuple[list[str], list[str], list[s
         return [c.receta for c in comidas], faltan, avisos
     except Exception as exc:
         return [], [], [f"cocina: {exc}"]
+
+
+# ─────────────────────────────────── 2b. MIRAR los buzones de captura ────────
+
+_AS_NOTAS = '''
+tell application "Notes"
+    set fs to every folder whose name is "%s"
+    if fs is {} then return "NOFOLDER"
+    set f to item 1 of fs
+    set total to count of notes of f
+    if total is 0 then return "0|-"
+    set fechas to modification date of every note of f
+    set vieja to item 1 of fechas
+    repeat with d in fechas
+        if (contents of d) < vieja then set vieja to (contents of d)
+    end repeat
+    return (total as text) & "|" & ((round (((current date) - vieja) / days)) as text)
+end tell
+'''
+
+
+def _buzon_recordatorios(nombre: str, hoy: date) -> tuple[Buzon | None, str | None]:
+    """Cuenta los incompletos de una lista, tengan fecha o no.
+
+    `leer_recordatorios` solo trae lo que vence pronto — que es lo correcto para
+    la agenda del día. Un buzón sin vaciar es justo lo contrario: lo que entró y
+    nunca recibió fecha. Por eso el predicado va sin ventana temporal.
+    """
+    from EventKit import EKEntityTypeReminder
+
+    store = _store_con_permiso(EKEntityTypeReminder, "recordatorios")
+    cals = [c for c in store.calendarsForEntityType_(EKEntityTypeReminder) or []
+            if c.title().lower() == nombre.lower()]
+    if not cals:
+        return None, f"no existe la lista de Recordatorios «{nombre}»"
+
+    pred = store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_(
+        None, None, cals)
+    args = _esperar(lambda cb: store.fetchRemindersMatchingPredicate_completion_(pred, cb))
+    crudos = args[0] if args else []
+
+    fechas = [d for d in (_dt(r.creationDate()) for r in crudos or []) if d]
+    dias = (hoy - min(fechas).date()).days if fechas else None
+    return Buzon(nombre=f"Recordatorios · {nombre}", items=len(crudos or []),
+                 dias_mas_viejo=dias), None
+
+
+def _buzon_notas(nombre: str) -> tuple[Buzon | None, str | None]:
+    """Cuenta las notas de una carpeta vía AppleScript.
+
+    Notas no tiene EventKit ni nada parecido: AppleScript es la única puerta, y
+    abre la app al preguntarle. Es lectura pura — no crea, no mueve, no borra.
+    """
+    salida = subprocess.run(
+        ["osascript", "-e", _AS_NOTAS % nombre.replace('\\', '\\\\').replace('"', '\\"')],
+        capture_output=True, timeout=60, text=True)
+    if salida.returncode != 0:
+        detalle = ((salida.stderr or "").strip().splitlines() or ["?"])[-1]
+        return None, f"no se pudo leer Notas: {detalle}"
+
+    crudo = (salida.stdout or "").strip()
+    if crudo == "NOFOLDER":
+        return None, f"no existe la carpeta de Notas «{nombre}»"
+
+    total, _, edad = crudo.partition("|")
+    try:
+        items = int(total)
+    except ValueError:
+        return None, f"Notas devolvió algo inesperado: {crudo!r}"
+    try:
+        dias = int(edad)
+    except ValueError:
+        dias = None
+    return Buzon(nombre=f"Notas · {nombre}", items=items, dias_mas_viejo=dias), None
+
+
+def mirar_buzones(cfg: dict, hoy: date) -> tuple[list[Buzon], list[str]]:
+    """Los inboxes que se llenan solos, si cruzaron un umbral.
+
+    Reemplaza la "revisión de los viernes" agendada. Un evento de calendario te
+    interrumpe todos los viernes aunque no haya nada que hacer, y encima nace de
+    una segunda fuente de avisos — que es exactamente lo que ROUTER.md §1
+    prohíbe. Esto aparece cuando hay motivo y calla cuando no.
+    """
+    h = cfg.get("higiene")
+    if not h or not h.get("en_brief", False):
+        return [], []
+
+    umbral_items = int(h.get("umbral_items", 10) or 0)
+    umbral_dias = int(h.get("umbral_dias", 7) or 0)
+
+    crudos: list[Buzon] = []
+    avisos: list[str] = []
+    fuentes = (
+        ((h.get("inbox_recordatorios") or "").strip(),
+         lambda n: _buzon_recordatorios(n, hoy)),
+        ((h.get("inbox_notas") or "").strip(), _buzon_notas),
+    )
+    for nombre, leer in fuentes:
+        if not nombre:
+            continue
+        try:
+            buzon, aviso = leer(nombre)
+        except Exception as exc:
+            # Un buzón ilegible degrada el brief; no lo voltea. Y se dice.
+            buzon, aviso = None, f"buzón «{nombre}»: {exc}"
+        if buzon:
+            crudos.append(buzon)
+        if aviso:
+            avisos.append(aviso)
+
+    return [z for z in crudos if z.merece_aviso(umbral_items, umbral_dias)], avisos
 
 
 # ────────────────────────────────── compromisos fijos (no están en el calendario) ──
@@ -499,6 +637,15 @@ def componer(b: Brief, cfg: dict, *, para_terceros: bool = False) -> str:
             L.append(f"   {det.iniciativa}: {det.detalle}")
         L.append("")
 
+    if b.buzones:
+        L.append("BUZONES SIN VACIAR")
+        for z in b.buzones:
+            detalle = f"{z.items} ítem(s)"
+            if z.dias_mas_viejo is not None:
+                detalle += f", el más viejo de hace {z.dias_mas_viejo} día(s)"
+            L.append(f"   {z.nombre}: {detalle}")
+        L.append("")
+
     if b.avisos:
         L.append("EL BRIEF NO PUDO VER TODO")
         for a in b.avisos:
@@ -518,6 +665,8 @@ def resumen(b: Brief) -> str:
         partes.append(f"{pend} recordatorio(s)")
     if b.detecciones:
         partes.append(f"{len(b.detecciones)} para decidir")
+    if b.buzones:
+        partes.append(f"{sum(z.items for z in b.buzones)} sin clasificar")
     if b.falta_comprar:
         partes.append(f"{len(b.falta_comprar)} de compras")
     return " · ".join(partes) if partes else "Día despejado"
@@ -617,6 +766,12 @@ def main(argv=None) -> int:
 
     b.comidas, b.falta_comprar, avisos_cocina = preguntar_cocina(cfg, hoy)
     b.avisos += avisos_cocina
+
+    try:
+        b.buzones, avisos_buzones = mirar_buzones(cfg, hoy)
+        b.avisos += avisos_buzones
+    except Exception as exc:
+        b.avisos.append(f"buzones: {exc}")
 
     texto = componer(b, cfg)
 
